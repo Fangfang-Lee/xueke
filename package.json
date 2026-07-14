@@ -1,0 +1,30 @@
+{
+  "name": "xueke",
+  "productName": "学刻",
+  "version": "0.1.0",
+  "private": true,
+  "description": "学刻 — 面向学习场景的 PC 端番茄工作法客户端",
+  "author": "Fangfang-Lee",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/Fangfang-Lee/xueke.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Fangfang-Lee/xueke/issues"
+  },
+  "homepage": "https://github.com/Fangfang-Lee/xueke#readme",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "dist-electron/main/index.js",
+  "scripts": {
+    "dev": "echo \"TODO: wire electron-vite / Electron + React dev server\" && exit 1",
+    "build": "echo \"TODO: wire production build\" && exit 1",
+    "package": "echo \"TODO: wire electron-builder / packaging\" && exit 1",
+    "typecheck": "echo \"TODO: wire tsc --noEmit\" && exit 1",
+    "lint": "echo \"TODO: wire eslint\" && exit 1"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
