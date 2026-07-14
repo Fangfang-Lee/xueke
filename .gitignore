@@ -60,3 +60,6 @@ Desktop.ini
 .volta/
 .turbo/
 .vite/
+
+# Git worktrees
+.worktrees/
