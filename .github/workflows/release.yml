@@ -17,10 +17,10 @@ jobs:
         include:
           - name: macOS Apple Silicon
             os: macos-14
-            command: npm run build && npx electron-builder --mac dmg --arm64
+            command: npm run build && npx electron-builder --mac dmg --arm64 --publish never
           - name: Windows x64
             os: windows-latest
-            command: npm run build && npx electron-builder --win nsis --x64
+            command: npm run build && npx electron-builder --win nsis --x64 --publish never
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +29,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Install Windows Rollup binary
+        if: runner.os == 'Windows'
+        run: npm install --no-save --ignore-scripts @rollup/rollup-win32-x64-msvc@4.62.4
       - run: ${{ matrix.command }}
       - uses: actions/upload-artifact@v4
         with:
