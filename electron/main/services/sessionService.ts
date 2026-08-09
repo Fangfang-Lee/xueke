@@ -1,0 +1,81 @@
+import { EventEmitter } from 'node:events'
+import { randomUUID } from 'node:crypto'
+import { DEFAULT_SETTINGS } from '../../../shared/defaults'
+import type { AppData, PomodoroSession, SessionType, Settings, Task, TimerSnapshot } from '../../../shared/types'
+import { AppStore } from '../store/appStore'
+
+const idleTimer = (): TimerSnapshot => ({ status: 'idle', phase: 'focus', remainingMs: DEFAULT_SETTINGS.focusMinutes * 60_000, plannedMs: DEFAULT_SETTINGS.focusMinutes * 60_000, completedFocusCountInCycle: 0 })
+
+export class SessionService extends EventEmitter {
+  private data!: AppData
+  private timer = idleTimer()
+  private endsAt?: number
+  private interval?: NodeJS.Timeout
+  private ending?: Promise<void>
+
+  constructor(private readonly store: AppStore) { super() }
+
+  async initialize(): Promise<void> {
+    this.data = await this.store.load()
+    const interruptedAt = new Date().toISOString()
+    for (const session of this.data.sessions) {
+      if (!session.endedAt) { session.completed = false; session.endedAt = interruptedAt }
+    }
+    await this.persist()
+    this.interval = setInterval(() => void this.tick(), 500)
+  }
+  dispose(): void { if (this.interval) clearInterval(this.interval) }
+  snapshot(): TimerSnapshot { return { ...this.timer } }
+  state(): { timer: TimerSnapshot; currentTaskId?: string } { return { timer: this.snapshot(), currentTaskId: this.data.currentTaskId } }
+  tasks(): Task[] { return [...this.data.tasks] }
+  sessions(): PomodoroSession[] { return [...this.data.sessions] }
+  settings(): Settings { return { ...this.data.settings } }
+
+  async start(): Promise<TimerSnapshot> {
+    if (this.timer.status !== 'idle') return this.snapshot()
+    const plannedMs = this.duration(this.timer.phase)
+    const session: PomodoroSession = { id: randomUUID(), taskId: this.timer.phase === 'focus' ? this.data.currentTaskId : undefined, type: this.timer.phase, plannedMs, startedAt: new Date().toISOString(), completed: false }
+    this.data.sessions.push(session)
+    this.timer = { ...this.timer, status: 'running', plannedMs, remainingMs: plannedMs, startedAt: session.startedAt, activeSessionId: session.id, currentTaskId: session.taskId }
+    this.endsAt = Date.now() + plannedMs
+    await this.persist(); this.emit('tick', this.snapshot()); return this.snapshot()
+  }
+  pause(): TimerSnapshot { if (this.timer.status === 'running') { this.refresh(); this.timer.status = 'paused'; this.endsAt = undefined; this.emit('tick', this.snapshot()) } return this.snapshot() }
+  resume(): TimerSnapshot { if (this.timer.status === 'paused') { this.timer.status = 'running'; this.endsAt = Date.now() + this.timer.remainingMs; this.emit('tick', this.snapshot()) } return this.snapshot() }
+  async skip(): Promise<TimerSnapshot> { if (this.timer.status !== 'idle') await this.finish(false); return this.snapshot() }
+  async createTask(input: { title: string; note?: string }): Promise<Task> {
+    const title = input.title.trim(); if (!title) throw new Error('任务名称不能为空')
+    const task: Task = { id: randomUUID(), title, note: input.note?.trim() || undefined, status: 'active', createdAt: new Date().toISOString() }
+    this.data.tasks.push(task); await this.persist(); return task
+  }
+  async updateTask(id: string, input: Partial<Pick<Task, 'title' | 'note' | 'status'>>): Promise<Task> {
+    const task = this.data.tasks.find((item) => item.id === id); if (!task) throw new Error('任务不存在')
+    if (input.title !== undefined) { const title = input.title.trim(); if (!title) throw new Error('任务名称不能为空'); task.title = title }
+    if (input.note !== undefined) task.note = input.note.trim() || undefined
+    if (input.status !== undefined) { task.status = input.status; task.completedAt = input.status === 'completed' ? new Date().toISOString() : undefined }
+    await this.persist(); return task
+  }
+  async deleteTask(id: string): Promise<void> { this.data.tasks = this.data.tasks.filter((task) => task.id !== id); if (this.data.currentTaskId === id) this.data.currentTaskId = undefined; await this.persist() }
+  async setCurrentTask(id?: string): Promise<void> { if (id && !this.data.tasks.some((task) => task.id === id)) throw new Error('任务不存在'); this.data.currentTaskId = id; await this.persist(); this.emit('dataChanged') }
+  async updateSettings(input: Partial<Settings>): Promise<Settings> {
+    const next = { ...this.data.settings, ...input }; if (![next.focusMinutes, next.shortBreakMinutes, next.longBreakMinutes, next.longBreakInterval].every((n) => Number.isInteger(n) && n > 0)) throw new Error('时长和间隔必须是正整数')
+    this.data.settings = next; if (this.timer.status === 'idle') { const ms = this.duration(this.timer.phase); this.timer = { ...this.timer, plannedMs: ms, remainingMs: ms } }; await this.persist(); return this.settings()
+  }
+  private async tick(): Promise<void> { if (this.timer.status !== 'running') return; this.refresh(); if (this.timer.remainingMs <= 0) await this.finish(true); else this.emit('tick', this.snapshot()) }
+  private refresh(): void { if (this.endsAt) this.timer.remainingMs = Math.max(0, this.endsAt - Date.now()) }
+  private finish(completed: boolean): Promise<void> {
+    if (this.ending) return this.ending
+    this.ending = this.doFinish(completed).finally(() => { this.ending = undefined })
+    return this.ending
+  }
+  private async doFinish(completed: boolean): Promise<void> {
+    const session = this.data.sessions.find((item) => item.id === this.timer.activeSessionId); if (session) { session.completed = completed; session.endedAt = new Date().toISOString() }
+    const previousPhase = this.timer.phase; const focusDone = completed && previousPhase === 'focus' ? this.timer.completedFocusCountInCycle + 1 : this.timer.completedFocusCountInCycle
+    const nextPhase: SessionType = previousPhase === 'focus' ? (focusDone >= this.data.settings.longBreakInterval ? 'longBreak' : 'shortBreak') : 'focus'
+    this.timer = { ...idleTimer(), phase: nextPhase, completedFocusCountInCycle: nextPhase === 'longBreak' ? 0 : focusDone }
+    const ms = this.duration(nextPhase); this.timer.plannedMs = ms; this.timer.remainingMs = ms; this.endsAt = undefined
+    await this.persist(); this.emit('phaseEnded', { phase: previousPhase, completed }); this.emit('tick', this.snapshot())
+  }
+  private duration(phase: SessionType): number { const s = this.data.settings; return (phase === 'focus' ? s.focusMinutes : phase === 'shortBreak' ? s.shortBreakMinutes : s.longBreakMinutes) * 60_000 }
+  private async persist(): Promise<void> { await this.store.save(this.data); this.emit('dataChanged') }
+}

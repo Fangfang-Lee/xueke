@@ -63,3 +63,6 @@ Desktop.ini
 
 # Git worktrees
 .worktrees/
+
+# Local agent instructions
+AGENTS.md
