@@ -17,10 +17,10 @@ jobs:
         include:
           - name: macOS Apple Silicon
             os: macos-14
-            command: npm run package -- --mac dmg --arm64
+            command: npm run build && npx electron-builder --mac dmg --arm64
           - name: Windows x64
             os: windows-latest
-            command: npm run package -- --win nsis --x64
+            command: npm run build && npx electron-builder --win nsis --x64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
