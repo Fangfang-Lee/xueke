@@ -12,11 +12,13 @@ export class SessionService extends EventEmitter {
   private endsAt?: number
   private interval?: NodeJS.Timeout
   private ending?: Promise<void>
+  private recoveryNotice?: string
 
   constructor(private readonly store: AppStore) { super() }
 
   async initialize(): Promise<void> {
     this.data = await this.store.load()
+    if (this.store.consumeRecoveryNotice()) this.recoveryNotice = '本地数据文件已损坏，已备份原文件并恢复为空白数据。'
     const interruptedAt = new Date().toISOString()
     for (const session of this.data.sessions) {
       if (!session.endedAt) { session.completed = false; session.endedAt = interruptedAt }
@@ -30,6 +32,7 @@ export class SessionService extends EventEmitter {
   tasks(): Task[] { return [...this.data.tasks] }
   sessions(): PomodoroSession[] { return [...this.data.sessions] }
   settings(): Settings { return { ...this.data.settings } }
+  consumeRecoveryNotice(): string | undefined { const notice = this.recoveryNotice; this.recoveryNotice = undefined; return notice }
 
   async start(): Promise<TimerSnapshot> {
     if (this.timer.status !== 'idle') return this.snapshot()

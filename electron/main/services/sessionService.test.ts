@@ -14,6 +14,28 @@ async function createService(): Promise<{ service: SessionService; store: AppSto
 afterEach(async () => { await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))) })
 
 describe('SessionService', () => {
+  it('starts a long break after the configured number of completed focuses', async () => {
+    const { service } = await createService()
+    await service.updateSettings({ longBreakInterval: 2 })
+    const testable = service as unknown as { finish: (completed: boolean) => Promise<void> }
+
+    await service.start(); await testable.finish(true)
+    expect(service.snapshot()).toMatchObject({ phase: 'shortBreak', completedFocusCountInCycle: 1 })
+    await service.start(); await testable.finish(true)
+    expect(service.snapshot()).toMatchObject({ phase: 'focus', completedFocusCountInCycle: 1 })
+    await service.start(); await testable.finish(true)
+    expect(service.snapshot()).toMatchObject({ phase: 'longBreak', completedFocusCountInCycle: 0 })
+    service.dispose()
+  })
+
+  it('keeps a paused timer from advancing until it resumes', async () => {
+    const { service } = await createService()
+    await service.start(); const paused = service.pause()
+    expect(paused.status).toBe('paused')
+    expect(service.resume().status).toBe('running')
+    service.dispose()
+  })
+
   it('marks an unfinished session as interrupted after restart', async () => {
     const { service, store } = await createService(); await service.start(); service.dispose()
     const restarted = new SessionService(store); await restarted.initialize()

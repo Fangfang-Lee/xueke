@@ -58,6 +58,24 @@ npm run package
 
 项目已包含 macOS DMG 与 Windows NSIS 的打包配置。macOS 已完成开发运行验证；Windows 安装包仍需在 Windows 环境或 CI 中实际构建与验证。若 `npm run package` 在外部下载/签名环节停滞，请检查网络访问与本机代码签名环境。
 
+## 下载与安装
+
+请从 [GitHub Releases](https://github.com/Fangfang-Lee/xueke/releases/latest) 下载最新版本：
+
+- **Mac（Apple Silicon）**：下载文件名包含 `mac-arm64` 的 `.dmg`，适用于 M1、M2、M3、M4 芯片。
+- **Windows（x64）**：下载文件名包含 `win-x64` 的 `.exe` 安装程序。
+
+macOS 首次打开未签名应用时，如系统阻止启动，可在“系统设置 → 隐私与安全性”中选择仍要打开。Windows 安装完成后，可从开始菜单启动“学刻”。
+
+## 发布流程
+
+每次发布时创建并推送版本标签即可触发 GitHub Actions，自动构建 macOS Apple Silicon DMG 与 Windows x64 安装包，并上传至 Release：
+
+```bash
+git tag -a v0.1.4 -m "学刻 v0.1.4"
+git push origin v0.1.4
+```
+
 ## 文档
 
 - [`docs/plans/`](./docs/plans/) — 设计记录

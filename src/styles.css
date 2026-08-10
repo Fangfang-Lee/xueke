@@ -26,6 +26,7 @@ h1 { margin: 8px 0 28px; font-size: 34px; }
 .actions button, .task-form button, .settings > button { padding: 11px 20px; color: white; background: #426837; border: 0; border-radius: 10px; cursor: pointer; }
 .actions .secondary { color: #426837; background: #e7efe3; }
 .task-form { display: flex; gap: 10px; width: min(560px, 80vw); margin-bottom: 20px; }
+.task-editor { display: grid; gap: 12px; width: min(560px, 80vw); margin-bottom: 20px; text-align: left; }.task-editor label { display: grid; gap: 6px; color: #4f514b; }.task-editor textarea { width: 100%; resize: vertical; padding: 11px 12px; font: inherit; border: 1px solid #d5d4cc; border-radius: 9px; background: #fffefa; }
 .unbind { margin: -8px 0 16px; padding: 8px 11px; color: #426837; background: transparent; border: 1px solid #b9ceb2; border-radius: 8px; cursor: pointer; }
 input { width: 100%; padding: 11px 12px; border: 1px solid #d5d4cc; border-radius: 9px; background: #fffefa; }
 .list { display: grid; gap: 10px; width: min(650px, 80vw); text-align: left; }

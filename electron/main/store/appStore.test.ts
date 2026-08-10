@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -35,9 +35,11 @@ describe('AppStore', () => {
     expect(JSON.parse(await readFile(path, 'utf8'))).toEqual(data)
   })
 
-  it('surfaces corrupt JSON as a read error', async () => {
+  it('backs up corrupt JSON and restores empty data', async () => {
     const { store, path } = await createStore()
     await writeFile(path, '{invalid json', 'utf8')
-    await expect(store.load()).rejects.toThrow('无法读取本地数据')
+    expect(await store.load()).toEqual(createEmptyAppData())
+    expect(store.consumeRecoveryNotice()).toBe(true)
+    expect((await readdir(join(path, '..'))).some((file) => file.startsWith('xueke-data.json.corrupt-'))).toBe(true)
   })
 })

@@ -4,6 +4,7 @@ import { createEmptyAppData } from '../../../shared/defaults'
 import type { AppData } from '../../../shared/types'
 
 export class AppStore {
+  private recoveredCorruptData = false
   constructor(private readonly filePath: string) {}
 
   async load(): Promise<AppData> {
@@ -12,6 +13,10 @@ export class AppStore {
       return validateAppData(JSON.parse(raw))
     } catch (error: unknown) {
       if (isMissingFileError(error)) return createEmptyAppData()
+      if (await this.backupCorruptFile()) {
+        this.recoveredCorruptData = true
+        return createEmptyAppData()
+      }
       throw new Error(`无法读取本地数据：${getErrorMessage(error)}`, { cause: error })
     }
   }
@@ -27,6 +32,21 @@ export class AppStore {
       await rename(temporaryPath, this.filePath)
     } catch (error: unknown) {
       throw new Error(`无法保存本地数据：${getErrorMessage(error)}`, { cause: error })
+    }
+  }
+
+  consumeRecoveryNotice(): boolean {
+    const recovered = this.recoveredCorruptData
+    this.recoveredCorruptData = false
+    return recovered
+  }
+
+  private async backupCorruptFile(): Promise<boolean> {
+    try {
+      await rename(this.filePath, `${this.filePath}.corrupt-${Date.now()}`)
+      return true
+    } catch {
+      return false
     }
   }
 }

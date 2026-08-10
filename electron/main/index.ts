@@ -25,7 +25,7 @@ function createWindow(): void {
     },
   })
 
-  window.on('ready-to-show', () => window.show())
+  window.on('ready-to-show', () => { window.show(); const notice = service?.consumeRecoveryNotice(); if (notice) window.webContents.send('xueke:store:error', { message: notice }) })
 
   if (is.dev && process.env.ELECTRON_RENDERER_URL) {
     void window.loadURL(process.env.ELECTRON_RENDERER_URL)
