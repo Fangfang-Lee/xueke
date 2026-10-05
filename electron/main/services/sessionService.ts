@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import { DEFAULT_SETTINGS } from '../../../shared/defaults'
-import type { AppData, PomodoroSession, SessionType, Settings, Task, TimerSnapshot } from '../../../shared/types'
+import type { AppData, FocusPreset, PomodoroSession, SessionType, Settings, Task, TimerSnapshot } from '../../../shared/types'
 import { AppStore } from '../store/appStore'
 
 const idleTimer = (): TimerSnapshot => ({ status: 'idle', phase: 'focus', remainingMs: DEFAULT_SETTINGS.focusMinutes * 60_000, plannedMs: DEFAULT_SETTINGS.focusMinutes * 60_000, completedFocusCountInCycle: 0 })
@@ -32,6 +32,7 @@ export class SessionService extends EventEmitter {
   tasks(): Task[] { return [...this.data.tasks] }
   sessions(): PomodoroSession[] { return [...this.data.sessions] }
   settings(): Settings { return { ...this.data.settings } }
+  focusPresets(): FocusPreset[] { return this.data.customFocusPresets.map((preset) => ({ ...preset })) }
   consumeRecoveryNotice(): string | undefined { const notice = this.recoveryNotice; this.recoveryNotice = undefined; return notice }
 
   async start(): Promise<TimerSnapshot> {
@@ -45,7 +46,7 @@ export class SessionService extends EventEmitter {
   }
   pause(): TimerSnapshot { if (this.timer.status === 'running') { this.refresh(); this.timer.status = 'paused'; this.endsAt = undefined; this.emit('tick', this.snapshot()) } return this.snapshot() }
   resume(): TimerSnapshot { if (this.timer.status === 'paused') { this.timer.status = 'running'; this.endsAt = Date.now() + this.timer.remainingMs; this.emit('tick', this.snapshot()) } return this.snapshot() }
-  async skip(): Promise<TimerSnapshot> { if (this.timer.status !== 'idle') await this.finish(false); return this.snapshot() }
+  async skip(): Promise<TimerSnapshot> { if (this.timer.status !== 'idle') await this.finish(false, this.timer.phase !== 'focus'); return this.snapshot() }
   async createTask(input: { title: string; note?: string }): Promise<Task> {
     const title = input.title.trim(); if (!title) throw new Error('任务名称不能为空')
     const task: Task = { id: randomUUID(), title, note: input.note?.trim() || undefined, status: 'active', createdAt: new Date().toISOString() }
@@ -64,21 +65,40 @@ export class SessionService extends EventEmitter {
     const next = { ...this.data.settings, ...input }; if (![next.focusMinutes, next.shortBreakMinutes, next.longBreakMinutes, next.longBreakInterval].every((n) => Number.isInteger(n) && n > 0)) throw new Error('时长和间隔必须是正整数')
     this.data.settings = next; if (this.timer.status === 'idle') { const ms = this.duration(this.timer.phase); this.timer = { ...this.timer, plannedMs: ms, remainingMs: ms } }; await this.persist(); return this.settings()
   }
+  async createFocusPreset(input: Omit<FocusPreset, 'id'>): Promise<FocusPreset> {
+    const preset = { id: randomUUID(), ...this.validateFocusPreset(input) }
+    this.data.customFocusPresets.push(preset); await this.persist(); return preset
+  }
+  async updateFocusPreset(id: string, input: Omit<FocusPreset, 'id'>): Promise<FocusPreset> {
+    const index = this.data.customFocusPresets.findIndex((preset) => preset.id === id); if (index < 0) throw new Error('专注方案不存在')
+    const preset = { id, ...this.validateFocusPreset(input) }; this.data.customFocusPresets[index] = preset; await this.persist(); return preset
+  }
+  async deleteFocusPreset(id: string): Promise<void> {
+    const count = this.data.customFocusPresets.length; this.data.customFocusPresets = this.data.customFocusPresets.filter((preset) => preset.id !== id)
+    if (this.data.customFocusPresets.length === count) throw new Error('专注方案不存在'); await this.persist()
+  }
   private async tick(): Promise<void> { if (this.timer.status !== 'running') return; this.refresh(); if (this.timer.remainingMs <= 0) await this.finish(true); else this.emit('tick', this.snapshot()) }
   private refresh(): void { if (this.endsAt) this.timer.remainingMs = Math.max(0, this.endsAt - Date.now()) }
-  private finish(completed: boolean): Promise<void> {
+  private finish(completed: boolean, autoStart = completed): Promise<void> {
     if (this.ending) return this.ending
-    this.ending = this.doFinish(completed).finally(() => { this.ending = undefined })
+    this.ending = this.doFinish(completed, autoStart).finally(() => { this.ending = undefined })
     return this.ending
   }
-  private async doFinish(completed: boolean): Promise<void> {
+  private async doFinish(completed: boolean, autoStart: boolean): Promise<void> {
     const session = this.data.sessions.find((item) => item.id === this.timer.activeSessionId); if (session) { session.completed = completed; session.endedAt = new Date().toISOString() }
     const previousPhase = this.timer.phase; const focusDone = completed && previousPhase === 'focus' ? this.timer.completedFocusCountInCycle + 1 : this.timer.completedFocusCountInCycle
     const nextPhase: SessionType = previousPhase === 'focus' ? (focusDone >= this.data.settings.longBreakInterval ? 'longBreak' : 'shortBreak') : 'focus'
     this.timer = { ...idleTimer(), phase: nextPhase, completedFocusCountInCycle: nextPhase === 'longBreak' ? 0 : focusDone }
     const ms = this.duration(nextPhase); this.timer.plannedMs = ms; this.timer.remainingMs = ms; this.endsAt = undefined
     await this.persist(); this.emit('phaseEnded', { phase: previousPhase, completed }); this.emit('tick', this.snapshot())
+    if (autoStart) await this.start()
   }
   private duration(phase: SessionType): number { const s = this.data.settings; return (phase === 'focus' ? s.focusMinutes : phase === 'shortBreak' ? s.shortBreakMinutes : s.longBreakMinutes) * 60_000 }
+  private validateFocusPreset(input: Omit<FocusPreset, 'id'>): Omit<FocusPreset, 'id'> {
+    const name = input.name.trim(); if (!name || name.length > 50) throw new Error('方案名称需为 1 至 50 个字符')
+    const values = [input.focusMinutes, input.shortBreakMinutes, input.longBreakMinutes, input.longBreakInterval]
+    if (!values.every((value) => Number.isInteger(value) && value > 0)) throw new Error('时长和间隔必须是正整数')
+    return { ...input, name }
+  }
   private async persist(): Promise<void> { await this.store.save(this.data); this.emit('dataChanged') }
 }

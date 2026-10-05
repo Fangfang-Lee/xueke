@@ -59,11 +59,19 @@ function validateAppData(value: unknown): AppData {
   const settings = value.settings
   if (!isRecord(settings) || typeof settings.focusMinutes !== 'number' || typeof settings.shortBreakMinutes !== 'number'
     || typeof settings.longBreakMinutes !== 'number' || typeof settings.longBreakInterval !== 'number'
-    || typeof settings.soundEnabled !== 'boolean' || typeof settings.notificationEnabled !== 'boolean' || settings.locale !== 'zh-CN') {
+    || typeof settings.soundEnabled !== 'boolean' || typeof settings.notificationEnabled !== 'boolean' || settings.locale !== 'zh-CN'
+    || (settings.restSoundMode !== undefined && settings.restSoundMode !== 'quiet' && settings.restSoundMode !== 'music' && settings.restSoundMode !== 'whiteNoise')) {
     throw new Error('设置数据格式不受支持')
   }
 
-  return value as unknown as AppData
+  const customFocusPresets = value.customFocusPresets === undefined ? [] : value.customFocusPresets
+  if (!Array.isArray(customFocusPresets) || !customFocusPresets.every(isValidFocusPreset)) throw new Error('专注方案数据格式不受支持')
+  return { ...value, settings: { ...settings, restSoundMode: settings.restSoundMode === 'music' ? 'music' : 'quiet' }, customFocusPresets } as unknown as AppData
+}
+
+function isValidFocusPreset(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.id !== 'string' || typeof value.name !== 'string' || !value.name.trim()) return false
+  return ['focusMinutes', 'shortBreakMinutes', 'longBreakMinutes', 'longBreakInterval'].every((key) => typeof value[key] === 'number' && Number.isInteger(value[key]) && value[key] > 0)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

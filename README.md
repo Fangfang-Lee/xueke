@@ -72,8 +72,8 @@ macOS 首次打开未签名应用时，如系统阻止启动，可在“系统�
 每次发布时创建并推送版本标签即可触发 GitHub Actions，自动构建 macOS Apple Silicon DMG 与 Windows x64 安装包，并上传至 Release：
 
 ```bash
-git tag -a v0.1.4 -m "学刻 v0.1.4"
-git push origin v0.1.4
+git tag -a v0.1.5 -m "学刻 v0.1.5"
+git push origin v0.1.5
 ```
 
 ## 文档

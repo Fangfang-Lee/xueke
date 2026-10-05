@@ -7,6 +7,7 @@ export const DEFAULT_SETTINGS: Settings = {
   longBreakInterval: 4,
   soundEnabled: true,
   notificationEnabled: true,
+  restSoundMode: 'quiet',
   locale: 'zh-CN',
 }
 
@@ -16,5 +17,6 @@ export function createEmptyAppData(): AppData {
     tasks: [],
     sessions: [],
     settings: { ...DEFAULT_SETTINGS },
+    customFocusPresets: [],
   }
 }

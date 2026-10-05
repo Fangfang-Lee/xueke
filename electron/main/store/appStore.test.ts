@@ -42,4 +42,26 @@ describe('AppStore', () => {
     expect(store.consumeRecoveryNotice()).toBe(true)
     expect((await readdir(join(path, '..'))).some((file) => file.startsWith('xueke-data.json.corrupt-'))).toBe(true)
   })
+
+  it('adds an empty preset list when loading data from before presets existed', async () => {
+    const { store, path } = await createStore()
+    const { customFocusPresets: _unused, ...legacyData } = createEmptyAppData()
+    await writeFile(path, JSON.stringify(legacyData), 'utf8')
+    expect((await store.load()).customFocusPresets).toEqual([])
+  })
+
+  it('uses quiet rest sound when loading data from before rest sound modes existed', async () => {
+    const { store, path } = await createStore()
+    const data = createEmptyAppData()
+    const { restSoundMode: _unused, ...legacySettings } = data.settings
+    await writeFile(path, JSON.stringify({ ...data, settings: legacySettings }), 'utf8')
+    expect((await store.load()).settings.restSoundMode).toBe('quiet')
+  })
+
+  it('migrates the retired white-noise setting to quiet', async () => {
+    const { store, path } = await createStore()
+    const data = createEmptyAppData()
+    await writeFile(path, JSON.stringify({ ...data, settings: { ...data.settings, restSoundMode: 'whiteNoise' } }), 'utf8')
+    expect((await store.load()).settings.restSoundMode).toBe('quiet')
+  })
 })

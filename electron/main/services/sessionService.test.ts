@@ -20,11 +20,11 @@ describe('SessionService', () => {
     const testable = service as unknown as { finish: (completed: boolean) => Promise<void> }
 
     await service.start(); await testable.finish(true)
-    expect(service.snapshot()).toMatchObject({ phase: 'shortBreak', completedFocusCountInCycle: 1 })
+    expect(service.snapshot()).toMatchObject({ phase: 'shortBreak', status: 'running', completedFocusCountInCycle: 1 })
     await service.start(); await testable.finish(true)
     expect(service.snapshot()).toMatchObject({ phase: 'focus', completedFocusCountInCycle: 1 })
     await service.start(); await testable.finish(true)
-    expect(service.snapshot()).toMatchObject({ phase: 'longBreak', completedFocusCountInCycle: 0 })
+    expect(service.snapshot()).toMatchObject({ phase: 'longBreak', status: 'running', completedFocusCountInCycle: 0 })
     service.dispose()
   })
 
@@ -49,5 +49,29 @@ describe('SessionService', () => {
     expect(service.sessions()).toHaveLength(1)
     expect(service.snapshot()).toMatchObject({ status: 'idle', phase: 'shortBreak' })
     service.dispose()
+  })
+
+  it('starts focus immediately when a rest is skipped', async () => {
+    const { service } = await createService()
+    const testable = service as unknown as { finish: (completed: boolean) => Promise<void> }
+    await service.start(); await testable.finish(true)
+    expect(service.snapshot()).toMatchObject({ phase: 'shortBreak', status: 'running' })
+    await service.skip()
+    expect(service.snapshot()).toMatchObject({ phase: 'focus', status: 'running' })
+    expect(service.sessions().at(-2)).toMatchObject({ type: 'shortBreak', completed: false })
+    service.dispose()
+  })
+
+  it('persists, updates, and deletes custom focus presets', async () => {
+    const { service, store } = await createService()
+    const created = await service.createFocusPreset({ name: '晚间学习', focusMinutes: 30, shortBreakMinutes: 5, longBreakMinutes: 20, longBreakInterval: 4 })
+    expect(service.focusPresets()).toEqual([created])
+    const updated = await service.updateFocusPreset(created.id, { name: '晚间复习', focusMinutes: 35, shortBreakMinutes: 5, longBreakMinutes: 20, longBreakInterval: 3 })
+    expect(updated.name).toBe('晚间复习')
+    const restarted = new SessionService(store); await restarted.initialize()
+    expect(restarted.focusPresets()).toEqual([updated])
+    await restarted.deleteFocusPreset(created.id)
+    expect(restarted.focusPresets()).toEqual([])
+    service.dispose(); restarted.dispose()
   })
 })

@@ -28,7 +28,17 @@ export interface Settings {
   longBreakInterval: number
   soundEnabled: boolean
   notificationEnabled: boolean
+  restSoundMode: 'quiet' | 'music'
   locale: 'zh-CN'
+}
+
+export interface FocusPreset {
+  id: string
+  name: string
+  focusMinutes: number
+  shortBreakMinutes: number
+  longBreakMinutes: number
+  longBreakInterval: number
 }
 
 export type TimerPhase = SessionType
@@ -62,5 +72,6 @@ export interface AppData {
   tasks: Task[]
   sessions: PomodoroSession[]
   settings: Settings
+  customFocusPresets: FocusPreset[]
   currentTaskId?: string
 }
