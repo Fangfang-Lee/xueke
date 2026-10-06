@@ -18,11 +18,14 @@ export class SessionService extends EventEmitter {
 
   async initialize(): Promise<void> {
     this.data = await this.store.load()
+    const initialDuration = this.duration(this.timer.phase)
+    this.timer = { ...this.timer, plannedMs: initialDuration, remainingMs: initialDuration }
     if (this.store.consumeRecoveryNotice()) this.recoveryNotice = '本地数据文件已损坏，已备份原文件并恢复为空白数据。'
     const interruptedAt = new Date().toISOString()
     for (const session of this.data.sessions) {
       if (!session.endedAt) { session.completed = false; session.endedAt = interruptedAt }
     }
+    if (this.data.currentTaskId && !this.data.tasks.some((task) => task.id === this.data.currentTaskId && task.status === 'active')) this.data.currentTaskId = undefined
     await this.persist()
     this.interval = setInterval(() => void this.tick(), 500)
   }
@@ -38,9 +41,10 @@ export class SessionService extends EventEmitter {
   async start(): Promise<TimerSnapshot> {
     if (this.timer.status !== 'idle') return this.snapshot()
     const plannedMs = this.duration(this.timer.phase)
-    const session: PomodoroSession = { id: randomUUID(), taskId: this.timer.phase === 'focus' ? this.data.currentTaskId : undefined, type: this.timer.phase, plannedMs, startedAt: new Date().toISOString(), completed: false }
+    const currentTask = this.timer.phase === 'focus' ? this.data.tasks.find((task) => task.id === this.data.currentTaskId && task.status === 'active') : undefined
+    const session: PomodoroSession = { id: randomUUID(), taskId: currentTask?.id, taskTitle: currentTask?.title, type: this.timer.phase, plannedMs, startedAt: new Date().toISOString(), completed: false }
     this.data.sessions.push(session)
-    this.timer = { ...this.timer, status: 'running', plannedMs, remainingMs: plannedMs, startedAt: session.startedAt, activeSessionId: session.id, currentTaskId: session.taskId }
+    this.timer = { ...this.timer, status: 'running', plannedMs, remainingMs: plannedMs, startedAt: session.startedAt, activeSessionId: session.id, currentTaskId: session.taskId, currentTaskTitle: session.taskTitle }
     this.endsAt = Date.now() + plannedMs
     await this.persist(); this.emit('tick', this.snapshot()); return this.snapshot()
   }
@@ -48,19 +52,19 @@ export class SessionService extends EventEmitter {
   resume(): TimerSnapshot { if (this.timer.status === 'paused') { this.timer.status = 'running'; this.endsAt = Date.now() + this.timer.remainingMs; this.emit('tick', this.snapshot()) } return this.snapshot() }
   async skip(): Promise<TimerSnapshot> { if (this.timer.status !== 'idle') await this.finish(false, this.timer.phase !== 'focus'); return this.snapshot() }
   async createTask(input: { title: string; note?: string }): Promise<Task> {
-    const title = input.title.trim(); if (!title) throw new Error('任务名称不能为空')
-    const task: Task = { id: randomUUID(), title, note: input.note?.trim() || undefined, status: 'active', createdAt: new Date().toISOString() }
+    const title = this.validateTaskTitle(input.title)
+    const task: Task = { id: randomUUID(), title, note: this.validateTaskNote(input.note), status: 'active', createdAt: new Date().toISOString() }
     this.data.tasks.push(task); await this.persist(); return task
   }
   async updateTask(id: string, input: Partial<Pick<Task, 'title' | 'note' | 'status'>>): Promise<Task> {
     const task = this.data.tasks.find((item) => item.id === id); if (!task) throw new Error('任务不存在')
-    if (input.title !== undefined) { const title = input.title.trim(); if (!title) throw new Error('任务名称不能为空'); task.title = title }
-    if (input.note !== undefined) task.note = input.note.trim() || undefined
-    if (input.status !== undefined) { task.status = input.status; task.completedAt = input.status === 'completed' ? new Date().toISOString() : undefined }
+    if (input.title !== undefined) task.title = this.validateTaskTitle(input.title)
+    if (input.note !== undefined) task.note = this.validateTaskNote(input.note)
+    if (input.status !== undefined) { task.status = input.status; task.completedAt = input.status === 'completed' ? new Date().toISOString() : undefined; if (input.status === 'completed' && this.data.currentTaskId === id) this.data.currentTaskId = undefined }
     await this.persist(); return task
   }
-  async deleteTask(id: string): Promise<void> { this.data.tasks = this.data.tasks.filter((task) => task.id !== id); if (this.data.currentTaskId === id) this.data.currentTaskId = undefined; await this.persist() }
-  async setCurrentTask(id?: string): Promise<void> { if (id && !this.data.tasks.some((task) => task.id === id)) throw new Error('任务不存在'); this.data.currentTaskId = id; await this.persist(); this.emit('dataChanged') }
+  async deleteTask(id: string): Promise<void> { const task = this.data.tasks.find((item) => item.id === id); if (!task) throw new Error('任务不存在'); for (const session of this.data.sessions) if (session.taskId === id && !session.taskTitle) session.taskTitle = task.title; this.data.tasks = this.data.tasks.filter((item) => item.id !== id); if (this.data.currentTaskId === id) this.data.currentTaskId = undefined; await this.persist() }
+  async setCurrentTask(id?: string): Promise<void> { const task = id ? this.data.tasks.find((item) => item.id === id) : undefined; if (id && !task) throw new Error('任务不存在'); if (task?.status === 'completed') throw new Error('已完成任务不能设为当前任务'); this.data.currentTaskId = id; await this.persist() }
   async updateSettings(input: Partial<Settings>): Promise<Settings> {
     const next = { ...this.data.settings, ...input }; if (![next.focusMinutes, next.shortBreakMinutes, next.longBreakMinutes, next.longBreakInterval].every((n) => Number.isInteger(n) && n > 0)) throw new Error('时长和间隔必须是正整数')
     this.data.settings = next; if (this.timer.status === 'idle') { const ms = this.duration(this.timer.phase); this.timer = { ...this.timer, plannedMs: ms, remainingMs: ms } }; await this.persist(); return this.settings()
@@ -100,5 +104,7 @@ export class SessionService extends EventEmitter {
     if (!values.every((value) => Number.isInteger(value) && value > 0)) throw new Error('时长和间隔必须是正整数')
     return { ...input, name }
   }
+  private validateTaskTitle(value: string): string { const title = value.trim(); if (!title) throw new Error('任务名称不能为空'); if (title.length > 80) throw new Error('任务名称不能超过 80 个字符'); return title }
+  private validateTaskNote(value?: string): string | undefined { const note = value?.trim() || undefined; if (note && note.length > 500) throw new Error('任务备注不能超过 500 个字符'); return note }
   private async persist(): Promise<void> { await this.store.save(this.data); this.emit('dataChanged') }
 }

@@ -14,6 +14,7 @@ export type SessionType = 'focus' | 'shortBreak' | 'longBreak'
 export interface PomodoroSession {
   id: string
   taskId?: string
+  taskTitle?: string
   type: SessionType
   plannedMs: number
   startedAt: string
@@ -52,6 +53,7 @@ export interface TimerSnapshot {
   startedAt?: string
   completedFocusCountInCycle: number
   currentTaskId?: string
+  currentTaskTitle?: string
   activeSessionId?: string
 }
 
@@ -63,6 +65,14 @@ export interface DailyStats {
     taskId: string | null
     title: string
     completedFocusCount: number
+    focusMs: number
+  }>
+  sessions: Array<{
+    id: string
+    taskId: string | null
+    title: string
+    startedAt: string
+    endedAt: string
     focusMs: number
   }>
 }

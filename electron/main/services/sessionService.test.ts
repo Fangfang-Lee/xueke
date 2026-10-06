@@ -43,6 +43,20 @@ describe('SessionService', () => {
     expect(restarted.sessions()[0].endedAt).toBeTruthy(); restarted.dispose()
   })
 
+  it('restores the saved focus duration into the idle timer after restart', async () => {
+    const { service, store } = await createService()
+    await service.updateSettings({ focusMinutes: 50, shortBreakMinutes: 10, longBreakMinutes: 30, longBreakInterval: 3 })
+    service.dispose()
+
+    const restarted = new SessionService(store)
+    await restarted.initialize()
+    expect(restarted.snapshot()).toMatchObject({ status: 'idle', phase: 'focus', plannedMs: 50 * 60_000, remainingMs: 50 * 60_000 })
+    await restarted.start()
+    expect(restarted.snapshot()).toMatchObject({ status: 'running', plannedMs: 50 * 60_000, remainingMs: 50 * 60_000 })
+    expect(restarted.sessions().at(-1)).toMatchObject({ type: 'focus', plannedMs: 50 * 60_000 })
+    restarted.dispose()
+  })
+
   it('does not finish a phase twice when skip is requested concurrently', async () => {
     const { service } = await createService(); await service.start()
     await Promise.all([service.skip(), service.skip()])
@@ -73,5 +87,38 @@ describe('SessionService', () => {
     await restarted.deleteFocusPreset(created.id)
     expect(restarted.focusPresets()).toEqual([])
     service.dispose(); restarted.dispose()
+  })
+
+  it('does not allow completed tasks to remain or become the current task', async () => {
+    const { service } = await createService()
+    const task = await service.createTask({ title: '英语阅读' })
+    await service.setCurrentTask(task.id)
+    await service.updateTask(task.id, { status: 'completed' })
+    expect(service.state().currentTaskId).toBeUndefined()
+    await expect(service.setCurrentTask(task.id)).rejects.toThrow('已完成任务不能设为当前任务')
+    service.dispose()
+  })
+
+  it('keeps the running focus bound to its original task', async () => {
+    const { service } = await createService()
+    const first = await service.createTask({ title: '任务一' })
+    const second = await service.createTask({ title: '任务二' })
+    await service.setCurrentTask(first.id)
+    await service.start()
+    await service.setCurrentTask(second.id)
+    expect(service.snapshot()).toMatchObject({ currentTaskId: first.id, currentTaskTitle: '任务一' })
+    expect(service.sessions()[0]).toMatchObject({ taskId: first.id, taskTitle: '任务一' })
+    service.dispose()
+  })
+
+  it('preserves historical task names when a task is deleted', async () => {
+    const { service } = await createService()
+    const task = await service.createTask({ title: '算法练习' })
+    await service.setCurrentTask(task.id)
+    await service.start()
+    await service.deleteTask(task.id)
+    expect(service.sessions()[0]).toMatchObject({ taskId: task.id, taskTitle: '算法练习' })
+    expect(service.state().currentTaskId).toBeUndefined()
+    service.dispose()
   })
 })

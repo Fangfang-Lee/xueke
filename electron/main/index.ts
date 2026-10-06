@@ -45,25 +45,38 @@ function createWindow(): void {
 function showMiniWindow(): void {
   if (!miniWindow) {
     miniWindow = new BrowserWindow({
-      width: 360,
-      height: 164,
-      minWidth: 300,
-      minHeight: 150,
-      maxWidth: 460,
-      maxHeight: 220,
+      width: 336,
+      height: 104,
+      minWidth: 336,
+      minHeight: 104,
+      maxWidth: 336,
+      maxHeight: 104,
       show: false,
       alwaysOnTop: true,
       frame: false,
       transparent: true,
-      resizable: true,
+      backgroundColor: '#00000000',
+      resizable: false,
       skipTaskbar: true,
+      hasShadow: true,
+      roundedCorners: true,
+      type: process.platform === 'darwin' ? 'panel' : undefined,
       webPreferences: { preload: join(__dirname, '../preload/index.js'), contextIsolation: true, nodeIntegration: false, sandbox: true },
     })
     miniWindow.setAlwaysOnTop(true, 'floating')
+    if (process.platform === 'darwin') {
+      miniWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+      miniWindow.setFullScreenable(false)
+    }
     miniWindow.on('closed', () => { miniWindow = undefined })
-    miniWindow.on('ready-to-show', () => miniWindow?.showInactive())
+    miniWindow.on('ready-to-show', () => { miniWindow?.showInactive(); miniWindow?.moveTop() })
     loadRenderer(miniWindow, 'mini')
-  } else miniWindow.showInactive()
+  } else {
+    miniWindow.setAlwaysOnTop(true, 'floating')
+    if (process.platform === 'darwin') miniWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+    miniWindow.showInactive()
+    miniWindow.moveTop()
+  }
   mainWindow?.hide()
 }
 

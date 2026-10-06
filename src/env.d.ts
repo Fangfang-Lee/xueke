@@ -15,6 +15,7 @@ interface Window {
     onTimerTick: (callback: (value: TimerSnapshot) => void) => () => void
     onPhaseEnded: (callback: (value: { phase: string; completed: boolean }) => void) => () => void
     onCompletionSound: (callback: (phase: TimerSnapshot['phase']) => void) => () => void
+    onDataChanged: (callback: () => void) => () => void
     onStoreError: (callback: (value: { message: string }) => void) => () => void
   }
 }

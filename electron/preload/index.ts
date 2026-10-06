@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('xueke', {
   onTimerTick: (callback: (value: unknown) => void) => subscribe(IpcChannels.timerTick, callback),
   onPhaseEnded: (callback: (value: unknown) => void) => subscribe(IpcChannels.timerPhaseEnded, callback),
   onCompletionSound: (callback: (value: unknown) => void) => subscribe(IpcChannels.completionSound, callback),
+  onDataChanged: (callback: () => void) => subscribe(IpcChannels.dataChanged, callback),
   onStoreError: (callback: (value: unknown) => void) => subscribe(IpcChannels.storeError, callback),
 })
 
