@@ -41,20 +41,24 @@ function MiniFocus({ timer, taskTitle }: { timer?: TimerSnapshot; taskTitle?: st
   return <main className={`mini-shell ${timer?.phase ?? 'focus'}`}><div className="mini-content"><div className="mini-copy"><div className="mini-state"><i className={running ? 'running' : ''} aria-hidden="true" /><span>{phase}{timer?.status === 'paused' ? ' · 已暂停' : ''}</span></div><small title={taskTitle}>{taskTitle ?? t.timer.noTask}</small></div><strong>{timer ? formatMs(timer.remainingMs) : '--:--'}</strong><div className="mini-actions"><button className="mini-action-primary" title={actionLabel} aria-label={actionLabel} onClick={() => void action()} type="button">{running ? <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6v12M16 6v12" /></svg> : <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 9 6-9 6Z" /></svg>}</button><button title={t.timer.expand} aria-label={t.timer.expand} onClick={() => void window.xueke.window.showMain()} type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4H4v4M16 4h4v4M20 16v4h-4M4 16v4h4" /></svg></button></div></div><div className="mini-progress" aria-hidden="true"><span style={{ width: `${progress}%` }} /></div></main>
 }
 function RestScreen({ timer, restSoundMode, invoke }: { timer?: TimerSnapshot; restSoundMode: Settings['restSoundMode']; invoke: (fn: () => Promise<unknown>, successMessage?: string) => Promise<boolean> }): React.JSX.Element {
+  const [activeSoundMode, setActiveSoundMode] = useState<Settings['restSoundMode']>(restSoundMode)
+  const restSessionId = timer?.phase === 'focus' ? undefined : timer?.activeSessionId
+  useEffect(() => { setActiveSoundMode(restSoundMode) }, [restSessionId, restSoundMode])
   useEffect(() => {
-    if (timer?.phase === 'focus' || timer?.status !== 'running' || restSoundMode !== 'music') return undefined
+    if (timer?.phase === 'focus' || timer?.status !== 'running' || activeSoundMode !== 'music') return undefined
     let cleanup: (() => void) | undefined
     let cancelled = false
     void window.xueke.media.restMusicUrl().then((url) => { if (!cancelled) cleanup = startRestMusic(url) })
     return () => { cancelled = true; cleanup?.() }
-  }, [timer?.phase, timer?.status, restSoundMode])
+  }, [timer?.phase, timer?.status, activeSoundMode])
   if (!timer) return <main className="rest-screen" />
   const longBreak = timer.phase === 'longBreak'
   const title = longBreak ? t.rest.longTitle : t.rest.shortTitle
   const hint = timer.status === 'paused' ? t.rest.paused : longBreak ? t.rest.longHint : t.rest.shortHint
   const primary = timer.status === 'paused' ? () => window.xueke.timer.resume() : () => window.xueke.timer.pause()
   const primaryLabel = timer.status === 'paused' ? t.rest.continue : t.timer.pause
-  return <main className={`rest-screen ${timer.phase}`} aria-label={title}><section className="rest-card"><span className="rest-orb" aria-hidden="true" /><p>{title}</p><strong>{formatMs(timer.remainingMs)}</strong><small>{hint}</small><div><button className="button-primary" onClick={() => void invoke(primary, t.feedback.timerUpdated)}>{primaryLabel}</button><button className="button-quiet" onClick={() => void invoke(() => window.xueke.timer.skip(), t.feedback.timerUpdated)}>{t.rest.skip}</button></div></section></main>
+  const switchSound = (mode: Settings['restSoundMode']) => { if (mode === activeSoundMode) return; setActiveSoundMode(mode); playModeSwitchSound() }
+  return <main className={`rest-screen ${timer.phase}`} aria-label={title}><section className="rest-card"><span className="rest-orb" aria-hidden="true" /><p>{title}</p><strong>{formatMs(timer.remainingMs)}</strong><small>{hint}</small><div className="rest-sound-control"><span><b>{t.rest.soundTitle}</b><small>{t.rest.soundHint}</small></span><div className="rest-sound-options" role="group" aria-label={t.rest.soundTitle}><button className={activeSoundMode === 'quiet' ? 'active' : ''} aria-pressed={activeSoundMode === 'quiet'} onClick={() => switchSound('quiet')} type="button">{t.rest.quiet}</button><button className={activeSoundMode === 'music' ? 'active' : ''} aria-pressed={activeSoundMode === 'music'} onClick={() => switchSound('music')} type="button">{t.rest.music}</button></div></div><div className="rest-actions"><button className="button-primary" onClick={() => void invoke(primary, t.feedback.timerUpdated)}>{primaryLabel}</button><button className="button-quiet" onClick={() => void invoke(() => window.xueke.timer.skip(), t.feedback.timerUpdated)}>{t.rest.skip}</button></div></section></main>
 }
 function Tasks({ tasks, currentTaskId, timer, invoke, onOpenFocus }: { tasks: Task[]; currentTaskId?: string; timer?: TimerSnapshot; invoke: (fn: () => Promise<unknown>, successMessage?: string) => Promise<boolean>; onOpenFocus: () => void }) {
   const [title, setTitle] = useState(''); const [note, setNote] = useState(''); const [editing, setEditing] = useState<Task>(); const [editorOpen, setEditorOpen] = useState(false); const [deleting, setDeleting] = useState<Task>()
